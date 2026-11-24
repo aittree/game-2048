@@ -10,7 +10,7 @@
 | --- | --- |
 | 产品名称 | 2048 桌面版（2048 Desktop） |
 | 运行形态 | Windows 桌面窗口程序（python 脚本 ／ exe 可执行文件） |
-| 技术栈 | Python 3.10+ / pygame 2.5+ / PyInstaller 6.x |
+| 技术栈 | Python 3.12（conda `game` 环境）/ pygame 2.5+ / PyInstaller 6.x |
 | 核心玩法 | 4×4 棋盘，方向键操作，相同数字合并，达到 2048 通关 |
 | 代码规模 | 约 800～1000 行（含注释与测试） |
 | 交付物 | 源码工程、文档集、单个 `2048.exe` |
@@ -62,16 +62,21 @@
 ## 四、快速开始
 
 ```bash
-# 1. 安装依赖（建议先建虚拟环境）
-pip install -r requirements.txt
+# 1. 激活 conda 环境（Python 3.12，环境名 game）
+conda activate game
 
-# 2. 运行
+# 2. 安装依赖
+python -m pip install -r requirements.txt
+
+# 3. 运行
 python main.py
 
-# 3. 打包成单文件 exe
+# 4. 打包成单文件 exe
 pyinstaller 2048.spec --clean --noconfirm
 # 产物：dist/2048.exe
 ```
+
+> 打包必须在 `game` 环境内执行，否则 exe 会因缺少 pygame 而启动失败。
 
 ## 五、关键约束（贯穿全部文档）
 
@@ -83,4 +88,4 @@ pyinstaller 2048.spec --clean --noconfirm
 
 ---
 
-文档版本 v1.0 ｜ 编写日期 2026-11-23 ｜ 适用 Python 3.10+ / pygame 2.5+ / PyInstaller 6.x / Windows 10・11
+文档版本 v1.1 ｜ 编写日期 2026-11-23 ｜ 修订 2026-11-24（对齐 conda `game` 环境 / Python 3.12 / IDEA）｜ 适用 Python 3.12 / pygame 2.5+ / PyInstaller 6.x / Windows 10・11
