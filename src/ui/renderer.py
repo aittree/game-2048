@@ -347,30 +347,52 @@ class Renderer:
 
         card = pygame.Rect(theme.RANK_CARD)
         pygame.draw.rect(screen, (255, 255, 255), card, border_radius=12)
+        head = self._font(14)
+        screen.blit(head.render("名次", True, TEXT_DARK), (card.x + 24, card.y + 20))
+        screen.blit(head.render("昵称", True, TEXT_DARK), (card.x + 66, card.y + 20))
+        score_head = head.render("分数", True, TEXT_DARK)
+        screen.blit(score_head, score_head.get_rect(topright=(card.x + 280, card.y + 20)))
+        date_head = head.render("日期", True, TEXT_DARK)
+        screen.blit(date_head, date_head.get_rect(topright=(card.right - 24, card.y + 20)))
+        pygame.draw.line(
+            screen, theme.EMPTY_ACCENT,
+            (card.x + 20, card.y + 46), (card.right - 20, card.y + 46), 1,
+        )
 
         if not records:
             empty = self._font(20).render("暂无记录，快去挑战吧", True, TEXT_DARK)
             screen.blit(empty, empty.get_rect(center=card.center))
         else:
-            head = self._font(15)
-            screen.blit(head.render("名次", True, TEXT_DARK), (card.x + 34, card.y + 20))
-            screen.blit(head.render("昵称", True, TEXT_DARK), (card.x + 96, card.y + 20))
-            score_head = head.render("分数", True, TEXT_DARK)
-            screen.blit(score_head, score_head.get_rect(topright=(card.right - 30, card.y + 20)))
-            pygame.draw.line(
-                screen, theme.EMPTY_ACCENT,
-                (card.x + 24, card.y + 48), (card.right - 24, card.y + 48), 1,
-            )
             for index, record in enumerate(records[:10], start=1):
-                y = card.y + 74 + (index - 1) * 33
+                y = card.y + 72 + (index - 1) * 33
                 rank = self._font(17).render(str(index), True, TEXT_DARK)
-                screen.blit(rank, rank.get_rect(midleft=(card.x + 40, y)))
-                name = self._font(16).render(record.name, True, TEXT_DARK)
-                screen.blit(name, name.get_rect(midleft=(card.x + 96, y)))
+                screen.blit(rank, rank.get_rect(midleft=(card.x + 28, y)))
+                name = self._fit_text(record.name, self._font(15), 104)
+                screen.blit(name, name.get_rect(midleft=(card.x + 66, y)))
                 score = self._font(17).render(str(record.score), True, TEXT_DARK)
-                screen.blit(score, score.get_rect(midright=(card.right - 30, y)))
+                screen.blit(score, score.get_rect(midright=(card.x + 280, y)))
+                date = self._font(13).render(self._short_time(record.time), True, TEXT_DARK)
+                screen.blit(date, date.get_rect(midright=(card.right - 24, y)))
 
         self._draw_button(screen, theme.BACK_BTN, "返回")
+
+    @staticmethod
+    def _short_time(text: str) -> str:
+        """存档时间为 'YYYY-MM-DD HH:MM'，榜单只显示 'MM-DD HH:MM'。"""
+        return text[5:16] if len(text) >= 16 else (text or "—")
+
+    @staticmethod
+    def _fit_text(text: str, font: pygame.font.Font, max_width: int) -> pygame.Surface:
+        """超长昵称截断并加省略号，避免压到分数列。"""
+        surface = font.render(text, True, TEXT_DARK)
+        if surface.get_width() <= max_width:
+            return surface
+        while text:
+            surface = font.render(text + "…", True, TEXT_DARK)
+            if surface.get_width() <= max_width:
+                return surface
+            text = text[:-1]
+        return font.render("…", True, TEXT_DARK)
 
     @staticmethod
     def hit_back(pos: tuple[int, int]) -> bool:
@@ -381,8 +403,19 @@ class Renderer:
         """结束浮层左侧「登记成绩」按钮。"""
         return pygame.Rect(theme.OVERLAY_BTN_LEFT).collidepoint(pos)
 
+    @staticmethod
+    def name_input_rect() -> pygame.Rect:
+        """昵称输入框的画布坐标，供输入法候选框定位。"""
+        return pygame.Rect(theme.NAME_INPUT_BOX)
+
     # —— 昵称输入 ——
-    def draw_name_entry(self, screen: pygame.Surface, score: int, name: str) -> None:
+    def draw_name_entry(
+        self,
+        screen: pygame.Surface,
+        score: int,
+        name: str,
+        preedit: str = "",
+    ) -> None:
         screen.fill(BG_COLOR)
         title = self._font(44).render("新纪录！", True, TEXT_DARK)
         screen.blit(title, title.get_rect(center=(WINDOW_W // 2, 150)))
@@ -395,10 +428,33 @@ class Renderer:
         box = pygame.Rect(theme.NAME_INPUT_BOX)
         pygame.draw.rect(screen, (255, 255, 255), box, border_radius=8)
         pygame.draw.rect(screen, theme.BUTTON_COLOR, box, width=2, border_radius=8)
-        shown = name if name else "输入昵称"
-        color = TEXT_DARK if name else (176, 166, 156)
-        text_surf = self._font(22).render(shown, True, color)
-        screen.blit(text_surf, text_surf.get_rect(midleft=(box.x + 14, box.centery)))
+
+        font = self._font(22)
+        name_surface = font.render(name, True, TEXT_DARK)
+        preedit_surface = font.render(preedit, True, theme.CONFIRM_OK_COLOR)
+        caret_surface = font.render("|", True, TEXT_DARK)
+        total_width = name_surface.get_width() + preedit_surface.get_width() + 4
+
+        if not name and not preedit:
+            placeholder = font.render("输入昵称", True, (176, 166, 156))
+            screen.blit(placeholder, placeholder.get_rect(midleft=(box.x + 14, box.centery)))
+        else:
+            # 内容超出时右对齐，保证光标始终可见；并裁剪到输入框内
+            x = box.x + 14 if total_width <= box.w - 28 else box.right - 14 - total_width
+            clip = screen.get_clip()
+            screen.set_clip(box.inflate(-8, 0))
+            screen.blit(name_surface, name_surface.get_rect(midleft=(x, box.centery)))
+            x += name_surface.get_width()
+            screen.blit(preedit_surface, preedit_surface.get_rect(midleft=(x, box.centery)))
+            if preedit:
+                pygame.draw.line(
+                    screen, theme.CONFIRM_OK_COLOR,
+                    (x, box.bottom - 14), (x + preedit_surface.get_width(), box.bottom - 14), 2,
+                )
+            x += preedit_surface.get_width()
+            if (pygame.time.get_ticks() // 500) % 2 == 0:   # 光标 500ms 闪烁
+                screen.blit(caret_surface, caret_surface.get_rect(midleft=(x + 3, box.centery)))
+            screen.set_clip(clip)
 
         hint = self._font(16).render("Enter 保存    ESC 跳过", True, TEXT_DARK)
         screen.blit(hint, hint.get_rect(center=(WINDOW_W // 2, 446)))

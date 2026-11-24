@@ -125,6 +125,15 @@ class Display:
             return int(x), int(y)
         return None
 
+    def canvas_rect_to_screen(self, rect: pygame.Rect) -> pygame.Rect:
+        """把画布矩形换算成窗口坐标，供输入法候选框定位。"""
+        return pygame.Rect(
+            self.offset[0] + int(rect.x * self.scale),
+            self.offset[1] + int(rect.y * self.scale),
+            int(rect.width * self.scale),
+            int(rect.height * self.scale),
+        )
+
 
 def _dispatch(game: Game, animator: Animator, action: Action) -> None:
     """把抽象动作交给状态机；只有本手真的执行且发生了移动才播动画。"""
@@ -160,6 +169,7 @@ def _run() -> None:
     pending: Action | None = None               # 动画期间缓冲的最近一手
     recorded = False                            # 本局是否已登记成绩
     name_text = ""
+    preedit = ""                                # 输入法未上屏的预编辑文本
     entry_score = 0
 
     def persist() -> None:
@@ -175,23 +185,34 @@ def _run() -> None:
     def can_record() -> bool:
         return not recorded and storage.qualifies(profile, game.score)
 
+    def sync_text_input_rect() -> None:
+        """把输入法候选框定位到昵称输入框（窗口坐标）。"""
+        pygame.key.set_text_input_rect(
+            display.canvas_rect_to_screen(Renderer.name_input_rect())
+        )
+
     def apply_fullscreen(value: bool) -> None:
         profile.fullscreen = value
         persist()
         display.apply(value)
+        if screen_name in (SCREEN_ENTRY, SCREEN_ENTRY_EXIT):
+            sync_text_input_rect()              # 全屏切换后候选框位置随画布缩放
 
     def open_entry(then_exit: bool) -> None:
-        nonlocal dialog, screen_name, name_text, entry_score
+        nonlocal dialog, screen_name, name_text, entry_score, preedit
         dialog = None
         entry_score = game.score
         name_text = ""
+        preedit = ""
         screen_name = SCREEN_ENTRY_EXIT if then_exit else SCREEN_ENTRY
         pygame.key.start_text_input()
+        sync_text_input_rect()
 
     def leave_entry(save: bool) -> bool:
         """离开昵称输入；返回 True 表示主循环应结束。"""
-        nonlocal screen_name, recorded
+        nonlocal screen_name, recorded, preedit
         pygame.key.stop_text_input()
+        preedit = ""
         exiting = screen_name == SCREEN_ENTRY_EXIT
         if save:
             name = name_text.strip() or "匿名"
@@ -229,8 +250,12 @@ def _run() -> None:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
                 apply_fullscreen(not display.fullscreen)
                 continue
+            if event.type == pygame.TEXTEDITING and screen_name in (SCREEN_ENTRY, SCREEN_ENTRY_EXIT):
+                preedit = event.text             # 输入法预编辑：随打字实时显示在输入框
+                continue
             if event.type == pygame.TEXTINPUT and screen_name in (SCREEN_ENTRY, SCREEN_ENTRY_EXIT):
                 name_text = (name_text + event.text)[: config.MAX_NAME_LEN]
+                preedit = ""
                 continue
 
             # 确认弹窗是模态的，优先处理
@@ -349,7 +374,7 @@ def _run() -> None:
         elif screen_name == SCREEN_RANKING:
             renderer.draw_leaderboard(display.canvas, profile.leaderboard)
         elif screen_name in (SCREEN_ENTRY, SCREEN_ENTRY_EXIT):
-            renderer.draw_name_entry(display.canvas, entry_score, name_text)
+            renderer.draw_name_entry(display.canvas, entry_score, name_text, preedit)
         else:
             show_record = game.state is GameState.GAME_OVER and can_record()
             renderer.draw(display.canvas, game.snapshot(), animator, can_record=show_record)
