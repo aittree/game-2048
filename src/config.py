@@ -19,6 +19,7 @@ CELL_PX = (BOARD_PX - GRID_PADDING * (GRID_SIZE + 1)) // GRID_SIZE   # = 105
 
 FPS = 60
 ANIM_MS = 140                 # 单次移动动画时长（毫秒）
+MAX_NAME_LEN = 12             # 排行榜昵称最大字符数
 
 # 颜色（经典 2048 主题）
 BG_COLOR = (250, 248, 239)

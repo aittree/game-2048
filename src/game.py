@@ -8,7 +8,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from . import storage
 from .board import Board, Direction, MoveResult
 from .config import WIN_VALUE
 
@@ -112,7 +111,6 @@ class Game:
             self.state = GameState.WIN
         elif self.board.is_game_over():
             self.state = GameState.GAME_OVER
-            storage.save_best(self.best)
 
     def undo(self) -> None:
         # 撤销仅在 RUNNING 状态可用：WIN 浮层与 GAME_OVER 下不允许回退棋盘

@@ -7,8 +7,7 @@ from src.game import Action, Game, GameState
 
 
 @pytest.fixture
-def game(monkeypatch):
-    monkeypatch.setattr("src.game.storage.save_best", lambda best: None)
+def game():
     return Game(best=0)
 
 

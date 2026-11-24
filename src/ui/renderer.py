@@ -18,6 +18,7 @@ from ..config import (
     BOARD_X,
     BOARD_Y,
     GRID_SIZE,
+    MAX_NAME_LEN,
     SCORE_BG,
     TEXT_DARK,
     TEXT_LIGHT,
@@ -36,6 +37,7 @@ from .animator import (
 )
 
 if TYPE_CHECKING:
+    from ..storage import Record
     from .animator import Animator
 
 _MERGE_SHRINK_RATIO = 0.35   # 合并源块在落定阶段前 35% 内收缩消失
@@ -63,7 +65,7 @@ class Renderer:
         screen: pygame.Surface,
         snapshot: GameSnapshot,
         animator: "Animator | None" = None,
-        dialog: str | None = None,
+        can_record: bool = False,
     ) -> None:
         screen.fill(BG_COLOR)
         self._draw_header(screen, snapshot)
@@ -71,15 +73,7 @@ class Renderer:
         self._draw_footer(screen)
         # 浮层等本手动画播完再出现，避免通关/结束的最后一手被遮住
         if snapshot.state is not GameState.RUNNING and (animator is None or not animator.active):
-            self._draw_overlay(screen, snapshot)
-        if dialog == "restart":
-            self._draw_dialog(
-                screen, "重新开始？", "当前进度会丢失，确定要重开吗？", "重新开始", theme.CONFIRM_OK_COLOR
-            )
-        elif dialog == "exit":
-            self._draw_dialog(
-                screen, "退出游戏？", "当前进度会丢失，最高分会保留", "退出游戏", theme.CONFIRM_OK_COLOR
-            )
+            self._draw_overlay(screen, snapshot, can_record)
 
     # —— 标题区：标题 + 分数 + 最高分 ——
     def _draw_header(self, screen: pygame.Surface, snapshot: GameSnapshot) -> None:
@@ -203,7 +197,7 @@ class Renderer:
         screen.blit(hint, hint.get_rect(center=(380, 667)))
 
     # —— 通关 / 结束浮层 ——
-    def _draw_overlay(self, screen: pygame.Surface, snapshot: GameSnapshot) -> None:
+    def _draw_overlay(self, screen: pygame.Surface, snapshot: GameSnapshot, can_record: bool) -> None:
         overlay = pygame.Surface((WINDOW_W, WINDOW_H), pygame.SRCALPHA)
         overlay.fill((250, 248, 239, 200))
         screen.blit(overlay, (0, 0))
@@ -226,6 +220,9 @@ class Renderer:
         if snapshot.state is GameState.WIN:
             self._draw_button(screen, theme.OVERLAY_BTN_LEFT, "继续挑战")
             self._draw_button(screen, theme.OVERLAY_BTN_RIGHT, "重新开始")
+        elif can_record:
+            self._draw_button(screen, theme.OVERLAY_BTN_LEFT, "登记成绩", theme.CONFIRM_OK_COLOR)
+            self._draw_button(screen, theme.OVERLAY_BTN_RIGHT, "再来一局")
         else:
             self._draw_button(screen, theme.OVERLAY_BTN_SINGLE, "再来一局")
             tip = self._font(16).render("按 R 可直接重开", True, TEXT_DARK)
@@ -244,13 +241,20 @@ class Renderer:
         screen.blit(text, text.get_rect(center=rect.center))
 
     # —— 确认弹窗（重新开始 / 退出共用同一套布局） ——
+    def draw_dialog(self, screen: pygame.Surface, dialog: str) -> None:
+        if dialog == "restart":
+            self._draw_dialog(
+                screen, "重新开始？", "当前进度会丢失，确定要重开吗？", "重新开始"
+            )
+        elif dialog == "exit":
+            self._draw_dialog(screen, "退出游戏？", "当前进度会丢失，最高分会保留", "退出游戏")
+
     def _draw_dialog(
         self,
         screen: pygame.Surface,
         title_text: str,
         detail_text: str,
         ok_label: str,
-        ok_color: tuple[int, int, int],
     ) -> None:
         veil = pygame.Surface((WINDOW_W, WINDOW_H), pygame.SRCALPHA)
         veil.fill((250, 248, 239, 180))
@@ -265,7 +269,141 @@ class Renderer:
         screen.blit(detail, detail.get_rect(center=(card.centerx, card.y + 94)))
 
         self._draw_button(screen, theme.CONFIRM_CANCEL_BTN, "取消")
-        self._draw_button(screen, theme.CONFIRM_OK_BTN, ok_label, ok_color)
+        self._draw_button(screen, theme.CONFIRM_OK_BTN, ok_label, theme.CONFIRM_OK_COLOR)
+
+    # —— 主菜单 ——
+    def draw_menu(self, screen: pygame.Surface, best: int) -> None:
+        screen.fill(BG_COLOR)
+        title = self._font(96).render(APP_NAME, True, TEXT_DARK)
+        screen.blit(title, title.get_rect(center=(WINDOW_W // 2, 170)))
+        sub = self._font(20).render("合并方块，挑战 2048", True, TEXT_DARK)
+        screen.blit(sub, sub.get_rect(center=(WINDOW_W // 2, 248)))
+
+        self._draw_button(screen, theme.MENU_BTN_START, "开始游戏", theme.CONFIRM_OK_COLOR)
+        self._draw_button(screen, theme.MENU_BTN_SETTINGS, "设置")
+        self._draw_button(screen, theme.MENU_BTN_RANKING, "排行榜")
+        self._draw_button(screen, theme.MENU_BTN_EXIT, "退出")
+
+        best_text = self._font(18).render(f"最高分 {best}", True, TEXT_DARK)
+        screen.blit(best_text, best_text.get_rect(center=(WINDOW_W // 2, 620)))
+        hint = self._font(16).render("ESC 退出    F11 切换全屏", True, TEXT_DARK)
+        screen.blit(hint, hint.get_rect(center=(WINDOW_W // 2, 690)))
+
+    @staticmethod
+    def hit_menu(pos: tuple[int, int]) -> str | None:
+        for rect, key in (
+            (theme.MENU_BTN_START, "start"),
+            (theme.MENU_BTN_SETTINGS, "settings"),
+            (theme.MENU_BTN_RANKING, "leaderboard"),
+            (theme.MENU_BTN_EXIT, "exit"),
+        ):
+            if pygame.Rect(rect).collidepoint(pos):
+                return key
+        return None
+
+    # —— 设置 ——
+    def draw_settings(self, screen: pygame.Surface, fullscreen: bool) -> None:
+        screen.fill(BG_COLOR)
+        title = self._font(44).render("设置", True, TEXT_DARK)
+        screen.blit(title, title.get_rect(center=(WINDOW_W // 2, 120)))
+        label = self._font(22).render("显示模式", True, TEXT_DARK)
+        screen.blit(label, label.get_rect(center=(WINDOW_W // 2, 250)))
+
+        for rect, text, active in (
+            (theme.SET_WINDOW_BTN, "窗口", not fullscreen),
+            (theme.SET_FULLSCREEN_BTN, "全屏", fullscreen),
+        ):
+            box = pygame.Rect(rect)
+            color = theme.CONFIRM_OK_COLOR if active else theme.BUTTON_COLOR
+            pygame.draw.rect(screen, color, box, border_radius=8)
+            text_surf = self._font(24).render(text, True, TEXT_LIGHT)
+            screen.blit(text_surf, text_surf.get_rect(center=box.center))
+            if active:
+                pygame.draw.circle(screen, TEXT_LIGHT, (box.x + 26, box.centery), 6)
+
+        tip = self._font(16).render("设置会自动保存，下次启动沿用", True, TEXT_DARK)
+        screen.blit(tip, tip.get_rect(center=(WINDOW_W // 2, 500)))
+        self._draw_button(screen, theme.BACK_BTN, "返回")
+        hint = self._font(16).render("F11 可随时切换全屏", True, TEXT_DARK)
+        screen.blit(hint, hint.get_rect(center=(380, 667)))
+
+    @staticmethod
+    def hit_settings(pos: tuple[int, int]) -> str | None:
+        if pygame.Rect(theme.SET_WINDOW_BTN).collidepoint(pos):
+            return "window"
+        if pygame.Rect(theme.SET_FULLSCREEN_BTN).collidepoint(pos):
+            return "fullscreen"
+        if pygame.Rect(theme.BACK_BTN).collidepoint(pos):
+            return "back"
+        return None
+
+    # —— 排行榜 ——
+    def draw_leaderboard(self, screen: pygame.Surface, records: "list[Record]") -> None:
+        screen.fill(BG_COLOR)
+        title = self._font(44).render("排行榜", True, TEXT_DARK)
+        screen.blit(title, title.get_rect(center=(WINDOW_W // 2, 92)))
+        sub = self._font(16).render("历史最高分前 10 名", True, TEXT_DARK)
+        screen.blit(sub, sub.get_rect(center=(WINDOW_W // 2, 136)))
+
+        card = pygame.Rect(theme.RANK_CARD)
+        pygame.draw.rect(screen, (255, 255, 255), card, border_radius=12)
+
+        if not records:
+            empty = self._font(20).render("暂无记录，快去挑战吧", True, TEXT_DARK)
+            screen.blit(empty, empty.get_rect(center=card.center))
+        else:
+            head = self._font(15)
+            screen.blit(head.render("名次", True, TEXT_DARK), (card.x + 34, card.y + 20))
+            screen.blit(head.render("昵称", True, TEXT_DARK), (card.x + 96, card.y + 20))
+            score_head = head.render("分数", True, TEXT_DARK)
+            screen.blit(score_head, score_head.get_rect(topright=(card.right - 30, card.y + 20)))
+            pygame.draw.line(
+                screen, theme.EMPTY_ACCENT,
+                (card.x + 24, card.y + 48), (card.right - 24, card.y + 48), 1,
+            )
+            for index, record in enumerate(records[:10], start=1):
+                y = card.y + 74 + (index - 1) * 33
+                rank = self._font(17).render(str(index), True, TEXT_DARK)
+                screen.blit(rank, rank.get_rect(midleft=(card.x + 40, y)))
+                name = self._font(16).render(record.name, True, TEXT_DARK)
+                screen.blit(name, name.get_rect(midleft=(card.x + 96, y)))
+                score = self._font(17).render(str(record.score), True, TEXT_DARK)
+                screen.blit(score, score.get_rect(midright=(card.right - 30, y)))
+
+        self._draw_button(screen, theme.BACK_BTN, "返回")
+
+    @staticmethod
+    def hit_back(pos: tuple[int, int]) -> bool:
+        return pygame.Rect(theme.BACK_BTN).collidepoint(pos)
+
+    @staticmethod
+    def hit_record(pos: tuple[int, int]) -> bool:
+        """结束浮层左侧「登记成绩」按钮。"""
+        return pygame.Rect(theme.OVERLAY_BTN_LEFT).collidepoint(pos)
+
+    # —— 昵称输入 ——
+    def draw_name_entry(self, screen: pygame.Surface, score: int, name: str) -> None:
+        screen.fill(BG_COLOR)
+        title = self._font(44).render("新纪录！", True, TEXT_DARK)
+        screen.blit(title, title.get_rect(center=(WINDOW_W // 2, 150)))
+        sub = self._font(20).render(f"本局得分 {score}，可以进入前 10 名", True, TEXT_DARK)
+        screen.blit(sub, sub.get_rect(center=(WINDOW_W // 2, 220)))
+
+        label = self._font(18).render("昵称", True, TEXT_DARK)
+        screen.blit(label, label.get_rect(midleft=(130, 330)))
+
+        box = pygame.Rect(theme.NAME_INPUT_BOX)
+        pygame.draw.rect(screen, (255, 255, 255), box, border_radius=8)
+        pygame.draw.rect(screen, theme.BUTTON_COLOR, box, width=2, border_radius=8)
+        shown = name if name else "输入昵称"
+        color = TEXT_DARK if name else (176, 166, 156)
+        text_surf = self._font(22).render(shown, True, color)
+        screen.blit(text_surf, text_surf.get_rect(midleft=(box.x + 14, box.centery)))
+
+        hint = self._font(16).render("Enter 保存    ESC 跳过", True, TEXT_DARK)
+        screen.blit(hint, hint.get_rect(center=(WINDOW_W // 2, 446)))
+        tip = self._font(14).render(f"支持中英文与数字，最多 {MAX_NAME_LEN} 个字符", True, TEXT_DARK)
+        screen.blit(tip, tip.get_rect(center=(WINDOW_W // 2, 476)))
 
     # —— 点击检测 ——
     @staticmethod
