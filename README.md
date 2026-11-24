@@ -12,7 +12,7 @@
 | 运行形态 | Windows 桌面窗口程序（python 脚本 ／ exe 可执行文件） |
 | 技术栈 | Python 3.12（conda `game` 环境）/ pygame 2.5+ / PyInstaller 6.x |
 | 核心玩法 | 4×4 棋盘，方向键操作，相同数字合并，达到 2048 通关 |
-| 代码规模 | 约 800～1000 行（含注释与测试） |
+| 代码规模 | 约 1700 行（含注释与测试） |
 | 交付物 | 源码工程、文档集、单个 `2048.exe` |
 
 ## 二、文档索引
@@ -31,52 +31,52 @@
 
 ## 三、工程目录结构
 
-文档中约定的完整工程结构如下（源码尚未落地时，此结构即为开发目标）：
+工程结构如下（源码已落地，可直接 `python main.py` 运行）：
 
 ```
 2048/
-├── main.py                 # 程序入口，创建窗口 + 主循环
+├── main.py                 # 程序入口：窗口/全屏、主菜单与游戏主循环
 ├── requirements.txt        # 依赖清单
+├── pytest.ini              # pytest 路径配置
 ├── 2048.spec               # PyInstaller 打包配置
-├── version_info.txt        # exe 版本信息（可选）
+├── version_info.txt        # exe 版本信息（已启用）
 ├── assets/
 │   ├── icon.ico            # exe / 任务栏图标（含 16~256 多尺寸）
 │   ├── icon.png            # 窗口图标（64×64，pygame 加载）
 │   └── fonts/msyh.ttc      # 随包字体，保证中文显示
 ├── src/
-│   ├── __init__.py
-│   ├── config.py           # 尺寸、颜色、概率等常量
+│   ├── config.py           # 尺寸、颜色、概率、动画与昵称长度等常量
 │   ├── board.py            # 棋盘核心逻辑（纯模型，可单测）
-│   ├── game.py             # 游戏状态机（运行/胜利/结束）
-│   ├── storage.py          # 最高分持久化
+│   ├── game.py             # 游戏状态机（运行/胜利/结束、计分、撤销）
+│   ├── storage.py          # 数据持久化（最高分/设置/排行榜）
 │   ├── resource.py         # 资源路径解析（兼容 exe 运行）
 │   └── ui/
-│       ├── theme.py        # 配色与字号表
-│       ├── renderer.py     # 棋盘、卡片、文字绘制
+│       ├── theme.py        # 配色、字号与各界面布局常量
+│       ├── renderer.py     # 棋盘/菜单/设置/排行榜/昵称/弹窗绘制
 │       └── animator.py     # 滑动/合并/新块弹出动画
 ├── tests/
-│   └── test_board.py       # 单元测试
+│   ├── test_board.py       # 棋盘规则单元测试
+│   ├── test_game.py        # 状态机单元测试
+│   └── test_storage.py     # 排行榜与存档单元测试
 └── docs/                   # 本文档集
 ```
 
 ## 四、快速开始
 
 ```bash
-# 1. 激活 conda 环境（Python 3.12，环境名 game）
-conda activate game
-
-# 2. 安装依赖
+# 1. 安装依赖
 python -m pip install -r requirements.txt
 
-# 3. 运行
+# 2. 运行
 python main.py
+
+# 3. 跑单元测试（可选）
+pytest -q
 
 # 4. 打包成单文件 exe
 pyinstaller 2048.spec --clean --noconfirm
 # 产物：dist/2048.exe
 ```
-
-> 打包必须在 `game` 环境内执行，否则 exe 会因缺少 pygame 而启动失败。
 
 ## 五、关键约束（贯穿全部文档）
 
@@ -85,7 +85,3 @@ pyinstaller 2048.spec --clean --noconfirm
 3. **资源路径统一走 `resource.py`**：禁止在代码中硬编码相对路径，避免 `--onefile` 运行时找不到资源。
 4. **可写目录只用于存档**：最高分等用户数据写入 `%APPDATA%\2048Desktop`，不写入 exe 所在目录（Program Files 下无写权限）。
 5. **窗口标题与图标**：exe 带自定义图标，窗口标题为「2048」，运行时不出现命令行黑窗。
-
----
-
-文档版本 v1.1 ｜ 编写日期 2026-11-23 ｜ 修订 2026-11-24（对齐 conda `game` 环境 / Python 3.12 / IDEA）｜ 适用 Python 3.12 / pygame 2.5+ / PyInstaller 6.x / Windows 10・11
