@@ -78,10 +78,16 @@ pyinstaller 2048.spec --clean --noconfirm
 # 产物：dist/2048.exe
 ```
 
-## 五、关键约束（贯穿全部文档）
+## 五、游戏图片
 
-1. **逻辑与界面分离**：`board.py` 不得 import pygame，保证核心规则可脱离图形环境做单元测试。
-2. **打包必须自包含**：exe 在未安装 Python、未安装 pygame 的干净 Windows 机器上可直接双击运行。
-3. **资源路径统一走 `resource.py`**：禁止在代码中硬编码相对路径，避免 `--onefile` 运行时找不到资源。
-4. **可写目录只用于存档**：最高分等用户数据写入 `%APPDATA%\2048Desktop`，不写入 exe 所在目录（Program Files 下无写权限）。
-5. **窗口标题与图标**：exe 带自定义图标，窗口标题为「2048」，运行时不出现命令行黑窗。
+<p align="center">
+  <img src="screenshots/start.png" alt="2048 开始界面" width="564">
+</p>
+
+<p align="center">
+  <img src="screenshots/play.png" alt="2048 游戏界面" width="564">
+</p>
+
+<p align="center">
+  <img src="screenshots/order.png" alt="2048 排行界面" width="564">
+</p>
