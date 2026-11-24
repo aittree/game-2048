@@ -1,4 +1,7 @@
-"""程序入口：初始化 pygame 与窗口，创建 Game / Renderer / Animator，驱动主循环。"""
+"""程序入口：初始化 pygame 与窗口，创建 Game / Renderer / Animator，驱动主循环。
+
+输入策略：动画期间方向键只缓冲最近 1 手，动画播完再执行，保证每一手动画完整。
+"""
 
 from __future__ import annotations
 
@@ -42,13 +45,32 @@ def enable_dpi_awareness() -> None:
             pass
 
 
+def center_window() -> None:
+    """把窗口摆到屏幕中央（FR-01）；拿不到句柄时保留系统默认位置。"""
+    try:
+        info = pygame.display.Info()
+        hwnd = pygame.display.get_wm_info().get("window")
+        if not hwnd:
+            return
+        x = max(0, (info.current_w - config.WINDOW_W) // 2)
+        y = max(0, (info.current_h - config.WINDOW_H) // 2)
+        swp_nosize, swp_nozorder = 0x0001, 0x0004
+        ctypes.windll.user32.SetWindowPos(
+            hwnd, 0, x, y, 0, 0, swp_nosize | swp_nozorder
+        )
+    except (AttributeError, OSError, pygame.error):
+        pass
+
+
 def _dispatch(game: Game, animator: Animator, action: Action) -> None:
-    """把抽象动作交给状态机；只有方向键且确实发生移动时才播动画。"""
+    """把抽象动作交给状态机；只有本手真的执行且发生了移动才播动画。"""
+    previous = game.last_result
     if action not in _DIRECTION_ACTIONS:
         animator.stop()
     game.handle_action(action)
-    if action in _DIRECTION_ACTIONS and game.last_result is not None and game.last_result.changed:
-        animator.start(game.last_result, game.last_new_tile)
+    result = game.last_result
+    if action in _DIRECTION_ACTIONS and result is not previous and result.changed:
+        animator.start(result, game.last_new_tile)
 
 
 def _run() -> None:
@@ -61,12 +83,14 @@ def _run() -> None:
         pass                                    # 图标缺失不阻断启动
 
     screen = pygame.display.set_mode((config.WINDOW_W, config.WINDOW_H))
+    center_window()
     clock = pygame.time.Clock()
     pygame.key.set_repeat(120, 60)              # 长按 120ms 后每 60ms 重复
 
     game = Game(best=storage.load_best())
     renderer = Renderer(resource_path("assets", "fonts", "msyh.ttc"))
     animator = Animator()
+    pending: Action | None = None               # 动画期间缓冲的最近一手
 
     running = True
     while running:
@@ -78,17 +102,30 @@ def _run() -> None:
                 if event.key == pygame.K_ESCAPE:
                     # ESC 不退出程序，仅在通关浮层下等价于「继续挑战」
                     if game.state is GameState.WIN:
+                        pending = None
                         _dispatch(game, animator, Action.CONTINUE)
                     continue
                 action = KEY_MAP.get(event.key)
-                if action is not None:
-                    _dispatch(game, animator, action)
+                if action is None:
+                    continue
+                if action in _DIRECTION_ACTIONS and animator.active:
+                    pending = action            # 动画未播完：只留最近一手，不打断动画
+                    continue
+                pending = None
+                _dispatch(game, animator, action)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if animator.active and game.state is not GameState.RUNNING:
+                    continue                    # 浮层还没出现，先不响应点击
+                pending = None
                 action = Renderer.hit_test(event.pos, game.state)
                 if action is not None:
                     _dispatch(game, animator, action)
 
         animator.update(dt)
+        if not animator.active and pending is not None:
+            action, pending = pending, None     # 动画播完后补执行缓冲的一手
+            _dispatch(game, animator, action)
+
         renderer.draw(screen, game.snapshot(), animator)
         pygame.display.flip()
 

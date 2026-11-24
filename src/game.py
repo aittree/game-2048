@@ -58,7 +58,7 @@ class Game:
         self.state = GameState.RUNNING
         self.win_shown = False          # 通关提示只弹一次
         self._undo_stack: list[tuple[list[list[int]], int]] = []   # 只保留最近 1 步
-        self.last_result: MoveResult | None = None
+        self.last_result: MoveResult = MoveResult()   # 最近一手；changed=False 表示无效
         self.last_new_tile: tuple[int, int] | None = None
         self.reset()                    # 构造即开局
 
@@ -69,7 +69,7 @@ class Game:
         self.state = GameState.RUNNING
         self.win_shown = False
         self._undo_stack.clear()
-        self.last_result = None
+        self.last_result = MoveResult()
         self.last_new_tile = None
 
     # —— 对外唯一入口 ——
@@ -121,7 +121,7 @@ class Game:
         grid, score = self._undo_stack.pop()
         self.board.grid = [row[:] for row in grid]
         self.score = score
-        self.last_result = None
+        self.last_result = MoveResult()
         self.last_new_tile = None
 
     def snapshot(self) -> GameSnapshot:
@@ -131,5 +131,5 @@ class Game:
             score=self.score,
             best=self.best,
             state=self.state,
-            last_gain=self.last_result.gained if self.last_result else 0,
+            last_gain=self.last_result.gained,
         )

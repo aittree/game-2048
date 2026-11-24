@@ -12,8 +12,9 @@ from ..config import ANIM_MS
 if TYPE_CHECKING:
     from ..board import MoveResult
 
-SLIDE_RATIO = 0.7            # 0~0.7 滑动，0.7~1.0 合并与新块缩放
+SLIDE_RATIO = 0.7            # 0~0.7 滑动，0.7~1.0 合并缩放
 MERGE_PULSE = 0.15           # 合并目标最大放大比例
+NEW_TILE_APPEAR_RATIO = 0.5  # 新块从滑动后半程开始弹出
 NEW_TILE_START_SCALE = 0.6   # 新块弹出起始缩放
 
 

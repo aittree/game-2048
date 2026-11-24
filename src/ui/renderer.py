@@ -26,10 +26,19 @@ from ..config import (
 )
 from ..game import Action, GameSnapshot, GameState
 from . import theme
-from .animator import MERGE_PULSE, NEW_TILE_START_SCALE, SLIDE_RATIO, ease_out_cubic, lerp
+from .animator import (
+    MERGE_PULSE,
+    NEW_TILE_APPEAR_RATIO,
+    NEW_TILE_START_SCALE,
+    SLIDE_RATIO,
+    ease_out_cubic,
+    lerp,
+)
 
 if TYPE_CHECKING:
     from .animator import Animator
+
+_MERGE_SHRINK_RATIO = 0.35   # 合并源块在落定阶段前 35% 内收缩消失
 
 
 class Renderer:
@@ -54,7 +63,8 @@ class Renderer:
         self._draw_header(screen, snapshot)
         self._draw_board(screen, snapshot, animator)
         self._draw_footer(screen)
-        if snapshot.state is not GameState.RUNNING:
+        # 浮层等本手动画播完再出现，避免通关/结束的最后一手被遮住
+        if snapshot.state is not GameState.RUNNING and (animator is None or not animator.active):
             self._draw_overlay(screen, snapshot)
 
     # —— 标题区：标题 + 分数 + 最高分 ——
@@ -111,7 +121,21 @@ class Renderer:
         if p < SLIDE_RATIO:
             self._draw_slides(screen, result, ease_out_cubic(p / SLIDE_RATIO))
         else:
-            self._draw_settled(screen, snapshot, result, anim, (p - SLIDE_RATIO) / (1 - SLIDE_RATIO))
+            self._draw_settled(screen, result, (p - SLIDE_RATIO) / (1 - SLIDE_RATIO))
+        self._draw_new_tile(screen, snapshot, anim, p)
+
+    def _draw_new_tile(self, screen: pygame.Surface, snapshot: GameSnapshot, anim, p: float) -> None:
+        """新块从滑动后半程开始弹出，避免「等动画完才出现」的延迟感。"""
+        if anim.new_pos is None or p < NEW_TILE_APPEAR_RATIO:
+            return
+        t = min(1.0, (p - NEW_TILE_APPEAR_RATIO) / (1 - NEW_TILE_APPEAR_RATIO))
+        r, c = anim.new_pos
+        self._draw_tile(
+            screen,
+            pygame.Rect(theme.cell_rect(r, c)),
+            snapshot.grid[r][c],
+            lerp(NEW_TILE_START_SCALE, 1.0, t),
+        )
 
     def _draw_slides(self, screen: pygame.Surface, result, t: float) -> None:
         """滑动阶段：按 slide 记录的起终点插值，速度前快后慢。"""
@@ -126,21 +150,25 @@ class Renderer:
             )
             self._draw_tile(screen, rect, value)
 
-    def _draw_settled(self, screen: pygame.Surface, snapshot: GameSnapshot, result, anim, q: float) -> None:
-        """合并阶段：未合并的块停在终点，合并目标回弹放大，新块从 0.6 弹出。"""
+    def _draw_settled(self, screen: pygame.Surface, result, q: float) -> None:
+        """合并阶段：未合并的块停在终点，合并源收缩，合并目标回弹放大。"""
         merge_targets = {(r, c) for r, c, _v in result.merges}
         for value, _src, dst in result.slides:
             if dst not in merge_targets:
                 self._draw_tile(screen, pygame.Rect(theme.cell_rect(*dst)), value)
 
+        # 落定初期让合并源块收缩消失，避免 0.7 处的硬切
+        if q < _MERGE_SHRINK_RATIO:
+            shrink = 1.0 - 0.3 * (q / _MERGE_SHRINK_RATIO)
+            drawn: set[tuple[int, int]] = set()
+            for value, _src, dst in result.slides:
+                if dst in merge_targets and dst not in drawn:
+                    drawn.add(dst)
+                    self._draw_tile(screen, pygame.Rect(theme.cell_rect(*dst)), value, shrink)
+
         scale = 1.0 + MERGE_PULSE * math.sin(math.pi * q)
         for r, c, value in result.merges:
             self._draw_tile(screen, pygame.Rect(theme.cell_rect(r, c)), value, scale)
-
-        if anim.new_pos is not None:
-            r, c = anim.new_pos
-            pop = lerp(NEW_TILE_START_SCALE, 1.0, q)
-            self._draw_tile(screen, pygame.Rect(theme.cell_rect(r, c)), snapshot.grid[r][c], pop)
 
     def _draw_tile(self, screen: pygame.Surface, rect: pygame.Rect, value: int, scale: float = 1.0) -> None:
         center = rect.center
