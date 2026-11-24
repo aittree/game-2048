@@ -23,7 +23,7 @@ TILE_COLORS: dict[int, tuple[int, int, int]] = {
 }
 DARK_TILE = (60, 58, 50)            # >2048 统一深色
 BUTTON_COLOR = (143, 122, 102)      # 「新游戏」与浮层按钮底色
-CONFIRM_OK_COLOR = (245, 149, 99)   # 二次确认里的「重新开始」
+CONFIRM_OK_COLOR = (245, 149, 99)   # 确认弹窗主按钮底色
 
 # 布局矩形 (x, y, w, h)：绘制与点击检测共用同一份常量，避免视觉与热区错位
 SCORE_BOX = (300, 32, 110, 64)
