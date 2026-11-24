@@ -23,6 +23,7 @@ TILE_COLORS: dict[int, tuple[int, int, int]] = {
 }
 DARK_TILE = (60, 58, 50)            # >2048 统一深色
 BUTTON_COLOR = (143, 122, 102)      # 「新游戏」与浮层按钮底色
+CONFIRM_OK_COLOR = (245, 149, 99)   # 二次确认里的「重新开始」
 
 # 布局矩形 (x, y, w, h)：绘制与点击检测共用同一份常量，避免视觉与热区错位
 SCORE_BOX = (300, 32, 110, 64)
@@ -32,6 +33,9 @@ OVERLAY_CARD = (80, 220, 400, 280)
 OVERLAY_BTN_LEFT = (118, 400, 150, 48)
 OVERLAY_BTN_RIGHT = (292, 400, 150, 48)
 OVERLAY_BTN_SINGLE = (205, 400, 150, 48)
+CONFIRM_CARD = (110, 300, 340, 200)
+CONFIRM_CANCEL_BTN = (152, 428, 120, 46)
+CONFIRM_OK_BTN = (288, 428, 120, 46)
 
 
 def tile_color(value: int) -> tuple[int, int, int]:

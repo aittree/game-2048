@@ -58,7 +58,13 @@ class Renderer:
         return font
 
     # —— 每帧入口 ——
-    def draw(self, screen: pygame.Surface, snapshot: GameSnapshot, animator: "Animator | None" = None) -> None:
+    def draw(
+        self,
+        screen: pygame.Surface,
+        snapshot: GameSnapshot,
+        animator: "Animator | None" = None,
+        confirm_restart: bool = False,
+    ) -> None:
         screen.fill(BG_COLOR)
         self._draw_header(screen, snapshot)
         self._draw_board(screen, snapshot, animator)
@@ -66,6 +72,8 @@ class Renderer:
         # 浮层等本手动画播完再出现，避免通关/结束的最后一手被遮住
         if snapshot.state is not GameState.RUNNING and (animator is None or not animator.active):
             self._draw_overlay(screen, snapshot)
+        if confirm_restart:
+            self._draw_confirm(screen)
 
     # —— 标题区：标题 + 分数 + 最高分 ——
     def _draw_header(self, screen: pygame.Surface, snapshot: GameSnapshot) -> None:
@@ -218,14 +226,44 @@ class Renderer:
             screen.blit(tip, tip.get_rect(center=(card.centerx, card.y + 260)))
 
     def _draw_button(
-        self, screen: pygame.Surface, rect_xywh: tuple[int, int, int, int], label: str
+        self,
+        screen: pygame.Surface,
+        rect_xywh: tuple[int, int, int, int],
+        label: str,
+        color: tuple[int, int, int] = theme.BUTTON_COLOR,
     ) -> None:
         rect = pygame.Rect(rect_xywh)
-        pygame.draw.rect(screen, theme.BUTTON_COLOR, rect, border_radius=8)
+        pygame.draw.rect(screen, color, rect, border_radius=8)
         text = self._font(22).render(label, True, TEXT_LIGHT)
         screen.blit(text, text.get_rect(center=rect.center))
 
+    # —— 「新游戏」二次确认 ——
+    def _draw_confirm(self, screen: pygame.Surface) -> None:
+        veil = pygame.Surface((WINDOW_W, WINDOW_H), pygame.SRCALPHA)
+        veil.fill((250, 248, 239, 180))
+        screen.blit(veil, (0, 0))
+
+        card = pygame.Rect(theme.CONFIRM_CARD)
+        pygame.draw.rect(screen, (255, 255, 255), card, border_radius=16)
+
+        title = self._font(28).render("重新开始？", True, TEXT_DARK)
+        screen.blit(title, title.get_rect(center=(card.centerx, card.y + 50)))
+        detail = self._font(18).render("当前进度会丢失，确定要重开吗？", True, TEXT_DARK)
+        screen.blit(detail, detail.get_rect(center=(card.centerx, card.y + 94)))
+
+        self._draw_button(screen, theme.CONFIRM_CANCEL_BTN, "取消")
+        self._draw_button(screen, theme.CONFIRM_OK_BTN, "重新开始", theme.CONFIRM_OK_COLOR)
+
     # —— 点击检测 ——
+    @staticmethod
+    def hit_confirm(pos: tuple[int, int]) -> str | None:
+        """二次确认弹窗的热点：'confirm' / 'cancel'；点空白返回 None（等同取消）。"""
+        if pygame.Rect(theme.CONFIRM_OK_BTN).collidepoint(pos):
+            return "confirm"
+        if pygame.Rect(theme.CONFIRM_CANCEL_BTN).collidepoint(pos):
+            return "cancel"
+        return None
+
     @staticmethod
     def hit_test(pos: tuple[int, int], state: GameState) -> Action | None:
         """返回被点击按钮对应的动作；未命中任何热点返回 None。"""

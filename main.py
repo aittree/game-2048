@@ -91,6 +91,7 @@ def _run() -> None:
     renderer = Renderer(resource_path("assets", "fonts", "msyh.ttc"))
     animator = Animator()
     pending: Action | None = None               # 动画期间缓冲的最近一手
+    confirm_restart = False                     # 「新游戏」二次确认弹窗
 
     running = True
     while running:
@@ -100,11 +101,19 @@ def _run() -> None:
                 running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    # ESC 不退出程序，仅在通关浮层下等价于「继续挑战」
-                    if game.state is GameState.WIN:
+                    # ESC 不退出程序；确认弹窗下取消，通关浮层下等价于「继续挑战」
+                    if confirm_restart:
+                        confirm_restart = False
+                    elif game.state is GameState.WIN:
                         pending = None
                         _dispatch(game, animator, Action.CONTINUE)
                     continue
+                if confirm_restart:
+                    if event.key in (pygame.K_r, pygame.K_RETURN, pygame.K_y):
+                        confirm_restart = False
+                        pending = None
+                        _dispatch(game, animator, Action.RESTART)
+                    continue                    # 弹窗期间其余按键忽略
                 action = KEY_MAP.get(event.key)
                 if action is None:
                     continue
@@ -114,10 +123,22 @@ def _run() -> None:
                 pending = None
                 _dispatch(game, animator, action)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if confirm_restart:
+                    if Renderer.hit_confirm(event.pos) == "confirm":
+                        confirm_restart = False
+                        pending = None
+                        _dispatch(game, animator, Action.RESTART)
+                    else:
+                        confirm_restart = False     # 「取消」或点空白都关闭弹窗
+                    continue
                 if animator.active and game.state is not GameState.RUNNING:
                     continue                    # 浮层还没出现，先不响应点击
-                pending = None
                 action = Renderer.hit_test(event.pos, game.state)
+                if action is Action.RESTART and game.state is GameState.RUNNING:
+                    confirm_restart = True      # 「新游戏」先二次确认，避免误触丢进度
+                    pending = None
+                    continue
+                pending = None
                 if action is not None:
                     _dispatch(game, animator, action)
 
@@ -126,7 +147,7 @@ def _run() -> None:
             action, pending = pending, None     # 动画播完后补执行缓冲的一手
             _dispatch(game, animator, action)
 
-        renderer.draw(screen, game.snapshot(), animator)
+        renderer.draw(screen, game.snapshot(), animator, confirm_restart)
         pygame.display.flip()
 
     storage.save_best(game.best)                # 退出前落盘
